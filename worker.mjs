@@ -60,6 +60,7 @@ async function sendMessage(req,env,user){
  const {diagnosis:d,degraded}=humanMode?{diagnosis:fallback(b.message,knowledge),degraded:false}:await model(b.message,hist.results.reverse(),env);
  const handoffState=humanMode?(existing?.handoff_state==='active'?'active':'requested'):'none';
  const answer=humanMode?(handoffState!=='active'&&(requestHuman||existing?.handoff_state==='resolved')?'Your request is in the human support queue. No one has joined yet; replies will appear here. You can add more details while you wait.':null):d.answer;
+ if(humanMode)d.next_action='Review the conversation and join the human support chat.';
  const supplied=Object.fromEntries(Object.entries(b.factors||{}).filter(([k,v])=>v!=='unknown'&&!(k==='risk'&&v==='none')));
  const factors=cleanFactors({...d.factors,...supplied});
  // Even in fallback mode, reported serious incidents always need human review.
