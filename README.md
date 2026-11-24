@@ -40,7 +40,9 @@ Tests run in Miniflare/D1 and cover authentication, cookie security, rejection o
 
 `cloudflare-deployment.json` records the account, script, D1 database and non-secret configuration. `npm run build` creates the bundled ES module at `dist/server/index.js`. Upload it using the connected Cloudflare API with `main_module: worker.js` and the declared bindings. Runtime secrets are `OPENAI_API_KEY` and `STUDIO_BRIDGE_SECRET`; keep them out of source, build output and browser code. Keep preview URLs disabled.
 
-The dashboard uses the existing Qual AI email/password sign-in. Credentials are verified by the Studio server and are not saved by the support desk. Only the expected authentication cookies are relayed, and they are set as Secure, HttpOnly, SameSite=Lax. Session validation runs server-side against the Studio. `STAFF_EMAILS` is the explicit staff allowlist; browser-supplied roles and identity headers never grant staff access. The old Sites sign-in is not used.
+The support dashboard has an independent Cloudflare Access staff identity. Approved staff receive an email code through the support login gateway at `/staff-login`. The Worker verifies the token's signature, issuer, audience, expiry and approved staff email. Its HttpOnly `__Host-qual_support_staff` cookie is separate from researcher cookies. Qual AI researcher sessions and browser-supplied role or identity headers do not grant dashboard access. Signing out of support does not sign out the research app.
+
+`support-access-plan.json` contains the exact proposed Access configuration. Provision the free-only Access organization and login-route application, then set `SUPPORT_AUTH_DOMAIN` and `SUPPORT_ACCESS_AUD` to their returned values before deploying this revision. Do not configure an account-wide deny policy. The existing customer bridge is outside the staff-login route and retains its server-secret protection.
 
 For schema updates, edit `db-schema.ts`, run `npm run db:generate`, review the new SQL and apply only unapplied migrations to the configured D1 database. Applied migration files are immutable. The initial migration is `drizzle/0000_giant_midnight.sql`.
 

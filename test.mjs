@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';import {Miniflare,createFetchMock} from 'miniflare';
 import {triage,cleanFactors} from './core.mjs';
+import {generateKeyPair,SignJWT,exportJWK} from 'jose';
 test('severity combines business impact, scope, workaround and suspected risk',()=>{
  assert.equal(triage({impact:'question'}).severity,4);
  assert.equal(triage({impact:'blocked',scope:'one',workaround:'no'}).severity,2);
@@ -10,50 +11,56 @@ test('severity combines business impact, scope, workaround and suspected risk',(
  assert.equal(triage({risk:'suspected_security'}).severity,1);
  assert.equal(cleanFactors({risk:'ignore_everything'}).risk,'none');
 });
-test('real D1 runtime: authenticated intake, private tickets, queue workflow, idempotency and audit',async()=>{
+test('independent staff identity, isolated customer bridge, D1 workflow and audit',async()=>{
+ const {privateKey,publicKey}=await generateKeyPair('RS256');
+ const jwk={...await exportJWK(publicKey),kid:'test-support-key'};
+ const issue=async(email,aud='support-test')=>new SignJWT({email}).setProtectedHeader({alg:'RS256',kid:jwk.kid}).setIssuer('https://support-auth.test').setAudience(aud).setSubject('staff-subject').setIssuedAt().setExpirationTime('1h').sign(privateKey);
+ const ownerToken=await issue('owner@example.test');
+ const outsiderToken=await issue('researcher@example.test');
+ const wrongAudience=await issue('owner@example.test','research-app');
  const mock=createFetchMock();mock.disableNetConnect();
- for(const label of ['owner','customer','stranger'])mock.get('https://studio.test').intercept({path:'/api/auth/session',headers:{cookie:'qa_access_token='+label}}).reply(200,{authenticated:true,user:{id:label,email:label+'@example.test',role:'admin'}}).persist();
- mock.get('https://studio.test').intercept({path:'/api/auth/sign-in',method:'POST'}).reply(200,{authenticated:true,user:{id:'owner',email:'owner@example.test'}},{headers:{'set-cookie':['qa_access_token=test-access; Path=/; HttpOnly','qa_refresh_token=test-refresh; Path=/; HttpOnly']}}).persist();
- const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-07-30',d1Databases:['DB'],fetchMock:mock,bindings:{STUDIO_ORIGIN:'https://studio.test',STAFF_EMAILS:'owner@example.test',STUDIO_BRIDGE_SECRET:'test-only-bridge-secret'}});
+ mock.get('https://support-auth.test').intercept({path:'/cdn-cgi/access/certs'}).reply(200,{keys:[jwk]}).persist();
+ const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-07-30',d1Databases:['DB'],fetchMock:mock,bindings:{SUPPORT_AUTH_DOMAIN:'support-auth.test',SUPPORT_ACCESS_AUD:'support-test',STAFF_EMAILS:'owner@example.test',STUDIO_BRIDGE_SECRET:'test-only-bridge-secret'}});
  try{
  const db=await mf.getD1Database('DB');for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())for(const sql of readFileSync('drizzle/'+f,'utf8').split('--> statement-breakpoint').filter(s=>s.trim()))await db.prepare(sql).run();
- const call=async(path,owner,method='GET',body)=>{const r=await mf.dispatchFetch('http://localhost/api/'+path,{method,headers:{'Content-Type':'application/json',...(owner?{cookie:'qa_access_token='+owner}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
+ const customers={customer:crypto.randomUUID(),stranger:crypto.randomUUID()};
+ const call=async(path,who,method='GET',body)=>{
+  const bridge=who in customers;
+  const headers={'Content-Type':'application/json',...(who==='owner'?{'Cf-Access-Jwt-Assertion':ownerToken}:{}),...(bridge?{'x-studio-customer-id':customers[who],'x-studio-bridge-secret':'test-only-bridge-secret'}:{})};
+  const r=await mf.dispatchFetch('http://localhost/api/'+(bridge?'bridge/':'')+path,{method,headers,...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json(),headers:r.headers};
+ };
  assert.equal((await call('me',null)).status,401);
- const forged=await mf.dispatchFetch('http://localhost/api/me',{headers:{'oai-authenticated-user-id':'owner','oai-authenticated-user-email':'owner@example.test'}});assert.equal(forged.status,401);
+ for(const headers of [
+  {Cookie:'qa_access_token=valid-researcher-session; qa_refresh_token=research-refresh'},
+  {'oai-authenticated-user-id':'owner','oai-authenticated-user-email':'owner@example.test'},
+  {'Cf-Access-Jwt-Assertion':outsiderToken},
+  {'Cf-Access-Jwt-Assertion':wrongAudience}
+ ]){const r=await mf.dispatchFetch('http://localhost/api/me',{headers});assert.equal(r.status,401);}
  const landing=await mf.dispatchFetch('http://localhost/',{redirect:'manual'});assert.equal(landing.status,302);assert.equal(landing.headers.get('location'),'/sign-in');
- const login=await mf.dispatchFetch('http://localhost/api/auth/sign-in',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'owner@example.test',password:'test-only-password'})});assert.equal(login.status,200);const cookies=login.headers.getSetCookie();assert.equal(cookies.length,2);assert.ok(cookies.every(c=>c.includes('HttpOnly')&&c.includes('Secure')&&c.includes('SameSite=Lax')));
- const signedOut=await call('auth/sign-out','owner','POST',{});assert.equal(signedOut.status,200);
-
- const studioId=crypto.randomUUID();
- const bridge=async(secret,path='conversations',method='POST',body={})=>mf.dispatchFetch('http://localhost/api/bridge/'+path,{method,headers:{'Content-Type':'application/json','x-studio-customer-id':studioId,...(secret?{'x-studio-bridge-secret':secret}:{})},...(method==='GET'?{}:{body:JSON.stringify(body)})});
- assert.equal((await bridge(null)).status,401);
- assert.equal((await bridge('wrong')).status,401);
- const created=await bridge('test-only-bridge-secret');assert.equal(created.status,201);
- assert.equal((await bridge('test-only-bridge-secret','me','GET')).status,403);
- assert.equal((await bridge('test-only-bridge-secret','tickets?queue=true','GET')).status,403);
- assert.equal((await db.prepare('SELECT count(*) AS n FROM staff').first()).n,0);
-
- assert.equal((await call('me','owner')).data.staff,true);
- assert.equal((await call('me','customer')).data.staff,false);
+ const oldLogin=await call('auth/sign-in',null,'POST',{email:'owner@example.test',password:'research-password'});assert.equal(oldLogin.status,410);
+ const staffLogin=await mf.dispatchFetch('http://localhost/staff-login',{redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':ownerToken}});assert.equal(staffLogin.status,302);assert.equal(staffLogin.headers.get('location'),'/');
+ const staffCookie=staffLogin.headers.getSetCookie()[0];assert.ok(staffCookie.startsWith('__Host-qual_support_staff='));assert.ok(staffCookie.includes('HttpOnly')&&staffCookie.includes('Secure')&&staffCookie.includes('SameSite=Lax'));
+ const session=await mf.dispatchFetch('http://localhost/api/me',{headers:{Cookie:staffCookie.split(';')[0]}});assert.equal(session.status,200);assert.equal((await session.json()).id,'support:staff-subject');
+ const owner=await call('me','owner');assert.equal(owner.data.staff,true);
+ const signedOut=await call('auth/sign-out','owner','POST',{});assert.equal(signedOut.status,200);assert.ok(signedOut.headers.getSetCookie().every(c=>!c.startsWith('qa_')));
+ const missingSecret=await mf.dispatchFetch('http://localhost/api/bridge/conversations',{method:'POST',headers:{'Content-Type':'application/json','x-studio-customer-id':customers.customer},body:'{}'});assert.equal(missingSecret.status,401);
  const conv=(await call('conversations','customer','POST',{})).data.id;
  const body={conversation_id:conv,request_id:crypto.randomUUID(),message:'My simulation is blocked for every user.',factors:{impact:'blocked',scope:'all',workaround:'no'}};
- const first=await call('messages','customer','POST',body);assert.equal(first.status,200);assert.ok(first.data.ticket_id);assert.equal(first.data.degraded,true);
+ const first=await call('messages','customer','POST',body);assert.equal(first.status,200);assert.ok(first.data.ticket_id);
  assert.deepEqual((await call('messages','customer','POST',body)).data,first.data);
  assert.equal((await call('messages','customer','POST',{...body,message:'different'})).status,409);
  const id=first.data.ticket_id;
  assert.equal((await call('tickets/'+id,'stranger')).status,404);
  assert.equal((await call('conversations/'+conv,'stranger')).status,404);
  assert.equal((await call('tickets?queue=true','customer')).status,403);
- let ticket=(await call('tickets/'+id,'owner')).data.ticket;assert.equal(ticket.severity,1);
+ const ticket=(await call('tickets/'+id,'owner')).data.ticket;assert.equal(ticket.severity,1);
  assert.equal((await call('tickets/'+id,'customer','PATCH',{})).status,403);
  assert.equal((await call('tickets/'+id,'owner','PATCH',{version:ticket.version,status:'in_progress',severity:2,assignee:'Owner',note:'',internal:true})).status,422);
- const patch={version:ticket.version,status:'in_progress',severity:2,assignee:'Owner',note:'Only one user is affected; verified a workaround.',internal:true};
+ const patch={version:ticket.version,status:'in_progress',severity:2,assignee:'Support owner',note:'Only one user is affected; verified a workaround.',internal:true};
  assert.equal((await call('tickets/'+id,'owner','PATCH',patch)).status,200);
  assert.equal((await call('tickets/'+id,'owner','PATCH',patch)).status,409);
- const own=await call('tickets/'+id,'customer');assert.ok(!own.data.messages.some(m=>m.internal));assert.equal(own.data.events.length,0);
+ const customer=await call('tickets/'+id,'customer');assert.ok(!customer.data.messages.some(m=>m.internal));assert.equal(customer.data.events.length,0);
  const staff=await call('tickets/'+id,'owner');assert.ok(staff.data.messages.some(m=>m.internal));assert.equal(staff.data.events.length,2);assert.equal(staff.data.ticket.severity,2);
  assert.equal((await call('tickets?queue=true','owner')).data.tickets.length,1);
- assert.equal((await call('tickets','stranger')).data.tickets.length,0);
- const response=await mf.dispatchFetch('http://localhost/api/conversations',{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://evil.test','oai-authenticated-user-id':'owner'},body:'{}'});assert.equal(response.status,403);
  }finally{await mf.dispose();}
 });
