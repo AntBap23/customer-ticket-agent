@@ -1,20 +1,28 @@
-// The dashboard reuses Qual AI authentication. No identity headers are trusted.
-export const cookieNames=['qa_access_token','qa_refresh_token'];
-export function sessionCookieHeader(request){
- return (request.headers.get('Cookie')||'').split(';').map(s=>s.trim()).filter(s=>cookieNames.some(name=>s.startsWith(name+'='))).join('; ');
+// Support staff have an independent Cloudflare Access session.
+// Researcher cookies, roles and browser-supplied identity headers are not accepted.
+import {createRemoteJWKSet,jwtVerify} from 'jose';
+export const SUPPORT_COOKIE='__Host-qual_support_staff';
+export function readSupportToken(request){
+ const assertion=request.headers.get('Cf-Access-Jwt-Assertion');
+ if(assertion)return assertion;
+ const pair=(request.headers.get('Cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(SUPPORT_COOKIE+'='));
+ return pair?pair.slice(SUPPORT_COOKIE.length+1):null;
 }
-export function sessionCookies(headers){
- return headers.getSetCookie().filter(c=>cookieNames.some(n=>c.startsWith(n+'='))).map(c=>c.split(';').filter((s,i)=>i===0||!/^\s*(domain|path|secure|httponly|samesite)\b/i.test(s)).join(';')+'; Path=/; HttpOnly; Secure; SameSite=Lax');
+export function staffAllowed(email,allowlist){return typeof email==='string'&&(allowlist||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase());}
+export async function verifySupportToken(token,env,keySet){
+ if(!env.SUPPORT_AUTH_DOMAIN||!env.SUPPORT_ACCESS_AUD)throw new Error('Support staff sign-in is not configured');
+ const issuer='https://'+env.SUPPORT_AUTH_DOMAIN;
+ const keys=keySet||createRemoteJWKSet(new URL(issuer+'/cdn-cgi/access/certs'));
+ const {payload}=await jwtVerify(token,keys,{issuer,audience:env.SUPPORT_ACCESS_AUD,algorithms:['RS256'],requiredClaims:['exp','iat','sub','email']});
+ if(!staffAllowed(payload.email,env.STAFF_EMAILS))throw new Error('Staff account is not approved');
+ return {user:{id:'support:'+payload.sub,email:payload.email,staff:true},expiresAt:payload.exp};
 }
-export function staffAllowed(email,allowlist){return typeof email==='string'&&(allowlist||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase());}
-export async function studioSession(request,env,fetcher=fetch){
- const cookie=sessionCookieHeader(request);
- if(!cookie)return {user:null,cookies:[]};
- const origin=env.STUDIO_ORIGIN;
- if(!origin?.startsWith('https://'))throw new Error('Studio authentication is not configured');
- const response=await fetcher(origin+'/api/auth/session',{headers:{Cookie:cookie,Accept:'application/json'},signal:AbortSignal.timeout(15000),redirect:'manual'});
- if(!response.ok)return {user:null,cookies:[]};
- const s=await response.json();
- if(!s.authenticated||!s.user?.id||!s.user?.email)return {user:null,cookies:sessionCookies(response.headers)};
- return {user:{id:'studio:'+s.user.id,email:s.user.email,staff:staffAllowed(s.user.email,env.STAFF_EMAILS)},cookies:sessionCookies(response.headers)};
+export async function supportSession(request,env,keySet){
+ const token=readSupportToken(request);if(!token)return {user:null};
+ try{return await verifySupportToken(token,env,keySet);}catch{return {user:null};}
 }
+export function supportCookie(token,expiresAt){
+ const seconds=Math.max(0,Math.min(28800,Math.floor(expiresAt-Date.now()/1000)));
+ return `${SUPPORT_COOKIE}=${token}; Path=/; Max-Age=${seconds}; HttpOnly; Secure; SameSite=Lax`;
+}
+export const clearSupportCookies=[`${SUPPORT_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,'CF_Authorization=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax'];

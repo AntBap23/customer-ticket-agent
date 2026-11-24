@@ -1,0 +1,17 @@
+{
+  "organization": {"name":"Qual AI Support","session_duration":"8h"},
+  "plan": "Free only; do not select a paid subscription",
+  "identity_provider": {"name":"Support email codes","type":"onetimepin","config":{}},
+  "application": {
+    "name":"Qual AI Support staff login",
+    "type":"self_hosted",
+    "domain":"customer-ticket-agent.antbap23.workers.dev/staff-login",
+    "session_duration":"8h"
+  },
+  "policy": {
+    "name":"Approved support staff",
+    "decision":"allow",
+    "include":[{"email":{"email":"anthonybaptiste00@gmail.com"}}]
+  },
+  "scope": "Only the support-staff login route. No account-wide deny policy, no researcher-app changes, no changes to other Workers. Customer bridge remains protected by its existing server secret."
+}
