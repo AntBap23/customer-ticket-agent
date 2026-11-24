@@ -57,8 +57,10 @@ For schema updates, edit `db-schema.ts`, run `npm run db:generate`, review the r
 
 These are routing recommendations, not confirmed incident classifications or response-time commitments. New replies can raise an existing ticket's severity; staff lower it with a recorded reason. Tickets are not automatically resolved by the AI. No email, external alert, refund or account change is performed.
 
-## Integration boundary
+## Qual AI website connection
 
-This is an independent support system. The original Studio's `/support` and n8n webhook are not modified automatically. Linking the Studio to this service is a separate integration step. For now, use this app's customer-help view and support queue.
+The Studio's shared frontend loads a `Get help` chat panel for signed-in users. Same-origin `/api/support-chat/*` routes validate the existing Studio session and relay customer requests server-side to this service's `/api/bridge/*` endpoints. Customer identity is derived on the Studio server, not accepted from browser input.
 
-The first release is privately hosted. Customer rollout, team permissions and any email provider need to be configured before public use. OpenAI calls have a token limit, a short history window and a timeout. API usage is billed separately from database/hosting allowances.
+Configure the Studio server with `CUSTOMER_AGENT_URL`, `CUSTOMER_AGENT_ACCESS_TOKEN` (private Sites service access), and `CUSTOMER_AGENT_BRIDGE_SECRET`. Configure the same bridge secret as `STUDIO_BRIDGE_SECRET` on the support service. Keep both credentials server-only. The bridge permits only customer conversation/message/ticket reads, never staff queue access or ticket administration. The old support-request form remains available.
+
+The support desk remains privately hosted. Customer chat works inside the existing Studio website through its authenticated backend; customers do not need a second ChatGPT login. Team permissions and any email provider are separate configuration. OpenAI calls have a token limit, a short history window and a timeout. API usage is billed separately from database/hosting allowances.

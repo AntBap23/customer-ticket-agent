@@ -53,7 +53,7 @@
     "title": "Support intake and operational boundaries",
     "source": "studio-support",
     "section": "Frontend support flow / AI System Message",
-    "text": "The Studio has a /support page and POST /api/support-tickets. Intake collects customer name, email, product area, category, priority, subject, description and optional study ID. This new service independently answers questions and saves tickets in its own Cloudflare D1 database; installing it does not wire the existing Studio page to it. No email, refund, deletion, account update or human notification occurs automatically."
+    "text": "The Studio has a /support page and POST /api/support-tickets. Intake collects customer name, email, product area, category, priority, subject, description and optional study ID. This new service independently answers questions and saves tickets in its own Cloudflare D1 database; the Studio website connects through its authenticated backend chat panel. No email, refund, deletion, account update or human notification occurs automatically."
   },
   {
     "id": "billing",

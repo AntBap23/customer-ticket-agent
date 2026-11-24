@@ -11,11 +11,20 @@ test('severity combines business impact, scope, workaround and suspected risk',(
  assert.equal(cleanFactors({risk:'ignore_everything'}).risk,'none');
 });
 test('real D1 runtime: authenticated intake, private tickets, queue workflow, idempotency and audit',async()=>{
- const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-07-30',d1Databases:['DB'],bindings:{BOOTSTRAP_OWNER:'true'}});
+ const mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-07-30',d1Databases:['DB'],bindings:{BOOTSTRAP_OWNER:'true',STUDIO_BRIDGE_SECRET:'test-only-bridge-secret'}});
  try{
  const db=await mf.getD1Database('DB');for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())for(const sql of readFileSync('drizzle/'+f,'utf8').split('--> statement-breakpoint').filter(s=>s.trim()))await db.prepare(sql).run();
  const call=async(path,owner,method='GET',body)=>{const r=await mf.dispatchFetch('http://localhost/api/'+path,{method,headers:{'Content-Type':'application/json',...(owner?{'oai-authenticated-user-id':owner}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
  assert.equal((await call('me',null)).status,401);
+ const studioId=crypto.randomUUID();
+ const bridge=async(secret,path='conversations',method='POST',body={})=>mf.dispatchFetch('http://localhost/api/bridge/'+path,{method,headers:{'Content-Type':'application/json','x-studio-customer-id':studioId,...(secret?{'x-studio-bridge-secret':secret}:{})},...(method==='GET'?{}:{body:JSON.stringify(body)})});
+ assert.equal((await bridge(null)).status,401);
+ assert.equal((await bridge('wrong')).status,401);
+ const created=await bridge('test-only-bridge-secret');assert.equal(created.status,201);
+ assert.equal((await bridge('test-only-bridge-secret','me','GET')).status,403);
+ assert.equal((await bridge('test-only-bridge-secret','tickets?queue=true','GET')).status,403);
+ assert.equal((await db.prepare('SELECT count(*) AS n FROM staff').first()).n,0);
+
  assert.equal((await call('me','owner')).data.staff,true);
  assert.equal((await call('me','customer')).data.staff,false);
  const conv=(await call('conversations','customer','POST',{})).data.id;
