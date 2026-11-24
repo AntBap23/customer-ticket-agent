@@ -2,6 +2,7 @@ import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqli
 export const conversations = sqliteTable('conversations', {id:text('id').primaryKey(),owner:text('owner').notNull(),version:integer('version').notNull().default(0),createdAt:text('created_at').notNull(),lastRequest:text('last_request').notNull().default('')});
 export const tickets = sqliteTable('tickets', {
  id:text('id').primaryKey(), conversationId:text('conversation_id').notNull(), owner:text('owner').notNull(), subject:text('subject').notNull(),
+ handoffState:text('handoff_state').notNull().default('none'), handoffRequestedAt:text('handoff_requested_at'),
  description:text('description').notNull(), area:text('area').notNull(), status:text('status').notNull().default('open'),
  severity:integer('severity').notNull().default(3), severityReason:text('severity_reason').notNull(),
  factors:text('factors').notNull(), diagnosis:text('diagnosis').notNull(), assignee:text('assignee').notNull().default(''),
