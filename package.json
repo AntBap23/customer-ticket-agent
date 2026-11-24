@@ -1,0 +1,1 @@
+{"name":"customer-ticket-agent","version":"1.0.0","private":true,"type":"module","scripts":{"build":"node build.mjs","dev":"node dev.mjs","test":"node --test test.mjs","db:generate":"drizzle-kit generate"},"devDependencies":{"drizzle-kit":"0.31.10","drizzle-orm":"0.45.2","esbuild":"0.25.12","miniflare":"4.20260730.0"}}

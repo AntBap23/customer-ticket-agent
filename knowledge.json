@@ -1,0 +1,72 @@
+[
+  {
+    "id": "workflow",
+    "title": "Getting started and study scoping",
+    "source": "studio-readme",
+    "section": "What It Does",
+    "text": "Create or select a study, define protocol guidance, add personas and interview guides, load real transcripts, run simulations, generate comparisons, and review/export outputs. Records belong to a signed-in user and may be scoped to an active study. If records seem missing, check the signed-in account and selected study before concluding data is lost."
+  },
+  {
+    "id": "protocol",
+    "title": "Protocol guidance and consistency",
+    "source": "studio-readme",
+    "section": "What It Does",
+    "text": "Protocols capture shared context, interview style, consistency rules, and analysis focus. For inconsistent simulation results, review protocol, persona details and guide together. Improving context is a troubleshooting suggestion, not a guaranteed fix."
+  },
+  {
+    "id": "uploads",
+    "title": "Document uploads and extraction",
+    "source": "studio-settings",
+    "section": "allowed_upload_extensions and max_upload_bytes",
+    "text": "The current default accepted extensions are .txt, .md, .pdf, .docx and the default maximum upload size is 5 MiB. Deployment settings can override both. Persona and guide extraction supports uploaded documents. For extraction failures, ask for file type, size, and a non-sensitive error message. A scanned PDF may need text extraction/OCR outside the app; built-in OCR is not confirmed. Never request raw participant transcripts."
+  },
+  {
+    "id": "simulation",
+    "title": "Simulation is blank or fails",
+    "source": "studio-support",
+    "section": "Website Context / Example ticket",
+    "text": "Simulations use a selected persona, interview guide and protocol within a study. If no responses appear, verify those selections and ask whether there was a safe error message. The support owner should inspect whether the simulation request reached the backend and whether AI service configuration is working. Do not claim a confirmed cause or retry completed unless observed."
+  },
+  {
+    "id": "comparison",
+    "title": "Comparison and analysis outputs",
+    "source": "studio-readme",
+    "section": "What It Does",
+    "text": "The platform compares real interview transcripts with persona-conditioned AI simulations and produces tables, narrative summaries and Gioia-oriented outputs. Check the selected study, transcript, simulation and protocol when a comparison is blank. No current evidence guarantees a particular export extension, coding reliability, or journal acceptance."
+  },
+  {
+    "id": "login",
+    "title": "Sign-in and account access",
+    "source": "studio-readme",
+    "section": "Auth + Security Model",
+    "text": "Protected pages and API routes require sign-in. Session authentication is provided by Supabase. If redirected to sign-in, check that the session is current and the expected account is selected. Repeated lockouts or inability to sign in require human review. Never ask for a password or promise an account reset."
+  },
+  {
+    "id": "privacy",
+    "title": "Data storage and privacy",
+    "source": "studio-readme",
+    "section": "Architecture / Local Development",
+    "text": "The current application stores records using local JSON or Supabase, depending on deployment configuration, and requires OpenAI access for AI extraction, simulations and analysis. Do not claim that data is never stored, never shared with an AI provider, or automatically deleted. Older research slides describe an earlier Streamlit prototype; those are not current retention guarantees. Anonymize participant information and verify consent and actual deployment policy before upload. Suspected exposure or another user's data requires human review."
+  },
+  {
+    "id": "support",
+    "title": "Support intake and operational boundaries",
+    "source": "studio-support",
+    "section": "Frontend support flow / AI System Message",
+    "text": "The Studio has a /support page and POST /api/support-tickets. Intake collects customer name, email, product area, category, priority, subject, description and optional study ID. This new service independently answers questions and saves tickets in its own Cloudflare D1 database; installing it does not wire the existing Studio page to it. No email, refund, deletion, account update or human notification occurs automatically."
+  },
+  {
+    "id": "billing",
+    "title": "Billing, refunds and service commitments",
+    "source": "studio-support",
+    "section": "AI System Message",
+    "text": "Billing, security, authentication lockout, data loss, urgent blocked work and account-specific intervention require human review. No documented prices, refund policy or response-time SLA is available. Record what the customer reports and the needed next action; never invent a policy or promise a refund."
+  },
+  {
+    "id": "research-background",
+    "title": "Why the project exists",
+    "source": "research-poster",
+    "section": "Introduction / Conclusion",
+    "text": "The project explores how AI can support qualitative researchers through interview simulation and comparison. It is designed to assist researchers, with human interviews and judgment remaining central. This is background context; focus support on using the product."
+  }
+]

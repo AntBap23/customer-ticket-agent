@@ -1,0 +1,37 @@
+[
+  {
+    "id": "studio-readme",
+    "url": "https://github.com/AntBap23/Qualitative-AI-Studio/blob/main/README.md",
+    "sha256": "54c2b3a7ef8a4e8591bfb8ba203e7ca32ab9b225f6f0ce5e0a72f6f93b2afe8c",
+    "reviewed_on": "2026-11-23",
+    "basis": "Local workspace snapshot"
+  },
+  {
+    "id": "studio-settings",
+    "url": "https://github.com/AntBap23/Qualitative-AI-Studio/blob/main/backend/settings.py",
+    "sha256": "438345877a245373f3d3ac018bbc44860a16637856498286539d7138174bdcb1",
+    "reviewed_on": "2026-11-23",
+    "basis": "Local workspace snapshot"
+  },
+  {
+    "id": "studio-support",
+    "url": "https://github.com/AntBap23/Qualitative-AI-Studio/blob/main/docs/customer-support-ticket-agent-context.md",
+    "sha256": "77ae934d788d6a51b6bc2c11c49d8f32cfd851395e3a31b9555ff7dda2f2508a",
+    "reviewed_on": "2026-11-23",
+    "basis": "Local workspace snapshot"
+  },
+  {
+    "id": "research-slides",
+    "url": "https://github.com/AntBap23/Qualitive-AI-Research/blob/main/AI%20in%20Qualitative%20Research.pdf",
+    "sha256": "57c6d422ccf3673a9cbe532318709c0551ef440d953c947c1140b54f4ffda065",
+    "reviewed_on": "2026-11-23",
+    "basis": "Downloaded public repository artifact"
+  },
+  {
+    "id": "research-poster",
+    "url": "https://github.com/AntBap23/Qualitive-AI-Research/blob/main/cure-poster.pdf",
+    "sha256": "aed273d9dc67eee4d07e71c557b1ed5feea2afd51515dd4c17df2f516811396a",
+    "reviewed_on": "2026-11-23",
+    "basis": "Downloaded public repository artifact"
+  }
+]
