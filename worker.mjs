@@ -59,7 +59,7 @@ async function sendMessage(req,env,user){
  const humanMode=requestHuman||(existing&&existing.handoff_state!=='none');
  const {diagnosis:d,degraded}=humanMode?{diagnosis:fallback(b.message,knowledge),degraded:false}:await model(b.message,hist.results.reverse(),env);
  const handoffState=humanMode?(existing?.handoff_state==='active'?'active':'requested'):'none';
- const answer=humanMode?(requestHuman||existing?.handoff_state==='resolved'?'Your request is in the human support queue. No one has joined yet; replies will appear here. You can add more details while you wait.':null):d.answer;
+ const answer=humanMode?(handoffState!=='active'&&(requestHuman||existing?.handoff_state==='resolved')?'Your request is in the human support queue. No one has joined yet; replies will appear here. You can add more details while you wait.':null):d.answer;
  const supplied=Object.fromEntries(Object.entries(b.factors||{}).filter(([k,v])=>v!=='unknown'&&!(k==='risk'&&v==='none')));
  const factors=cleanFactors({...d.factors,...supplied});
  // Even in fallback mode, reported serious incidents always need human review.
@@ -153,7 +153,7 @@ fetch('/api/auth/temporary',{method:'POST',headers:{'Content-Type':'application/
  if(b.version!==ticket.version)fail(409,'Ticket changed. Reload before saving');
  if(!statuses.includes(b.status)||![1,2,3,4].includes(b.severity)||typeof b.assignee!=='string'||b.assignee.length>120||typeof b.note!=='string'||b.note.length>6000)fail(422,'Invalid ticket update');
  if(b.severity!==ticket.severity&&!b.note.trim())fail(422,'Add a reason when overriding severity');
- const nextHandoff=ticket.handoff_state!=='none'?(b.status==='resolved'?'resolved':b.handoff_state==='active'||(!b.internal&&b.note.trim())?'active':ticket.handoff_state):'none';
+ const nextHandoff=ticket.handoff_state!=='none'?(b.status==='resolved'?'resolved':b.handoff_state==='active'||(b.internal===false&&b.note.trim())?'active':ticket.handoff_state):'none';
  const stamp=now();const note=b.note.trim();const updateId=crypto.randomUUID();
  const batch=[stmt(env.DB,'UPDATE tickets SET handoff_state=?,status=?,severity=?,severity_reason=?,assignee=?,updated_at=?,version=version+1,last_update=? WHERE id=? AND version=?',nextHandoff,b.status,b.severity,b.severity!==ticket.severity?'Support override: '+note:ticket.severity_reason,b.assignee,stamp,updateId,ticket.id,ticket.version),stmt(env.DB,'INSERT INTO events(id,ticket_id,actor,details,created_at) SELECT ?,?,?,?,? WHERE (SELECT last_update FROM tickets WHERE id=?)=?',crypto.randomUUID(),ticket.id,user.id,`Status: ${b.status}; severity: P${b.severity}; assignee: ${b.assignee||'Unassigned'}${note?'; '+note:''}`,stamp,ticket.id,updateId)];
  if(note)batch.push(stmt(env.DB,'INSERT INTO messages(id,conversation_id,ticket_id,owner,role,content,internal,created_at) SELECT ?,?,?,?,?,?,?,? WHERE (SELECT last_update FROM tickets WHERE id=?)=?',crypto.randomUUID(),ticket.conversation_id,ticket.id,ticket.owner,'support',note,b.internal===false?0:1,stamp,ticket.id,updateId));
