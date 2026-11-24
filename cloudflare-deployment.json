@@ -1,0 +1,16 @@
+{
+  "account_id": "6b6f768a73bddd15c3a904120c755ed4",
+  "script_name": "customer-ticket-agent",
+  "database_id": "e5ab7e47-d73c-43ec-a013-f4cafafa88c7",
+  "database_name": "customer-ticket-agent",
+  "compatibility_date": "2026-11-23",
+  "main_module": "worker.js",
+  "source": "dist/server/index.js",
+  "bindings": [
+    {"type":"d1","name":"DB","id":"e5ab7e47-d73c-43ec-a013-f4cafafa88c7"},
+    {"type":"plain_text","name":"STUDIO_ORIGIN","text":"https://qualitative-ai-studio.onrender.com"},
+    {"type":"plain_text","name":"STAFF_EMAILS","text":"anthonybaptiste00@gmail.com"},
+    {"type":"plain_text","name":"OPENAI_MODEL","text":"gpt-6-luna"}
+  ],
+  "observability": {"enabled":true,"logs":{"enabled":true,"invocation_logs":true},"traces":{"enabled":true,"head_sampling_rate":0.1}}
+}

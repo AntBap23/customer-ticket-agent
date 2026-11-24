@@ -1,9 +1,11 @@
 import html from './index.html';
+import loginHtml from './login.html';
+import {studioSession,sessionCookies} from './auth.mjs';
 import knowledge from './knowledge.json';
 import sources from './sources.json';
 import prompt from './prompts.md';
 import {triage,cleanFactors,outputSchema,validDiagnosis,fallback,boundedHistory,statuses} from './core.mjs';
-const security={'X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','X-Frame-Options':'SAMEORIGIN','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://chatgpt.com https://*.chatgpt.com"};
+const security={'X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','X-Frame-Options':'DENY','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"};
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{...security,'Content-Type':'application/json'}});
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
 const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(v);
@@ -18,12 +20,21 @@ async function readBody(req){
  try{return JSON.parse(new TextDecoder().decode(bytes));}catch{fail(400,'Invalid JSON');}
 }
 function references(ids){return [...new Set(ids)].map(id=>knowledge.find(k=>k.id===id)).filter(Boolean).map(k=>({id:k.id,title:k.title,url:sources.find(s=>s.id===k.source)?.url}));}
-async function identity(req,env){
- // Dispatch verifies these headers. Never expose this Worker outside that boundary.
- const id=req.headers.get('oai-authenticated-user-id'); if(!id)fail(401,'Sign in to continue');
- const email=req.headers.get('oai-authenticated-user-email')||'';
- const row=await stmt(env.DB,'SELECT id FROM staff WHERE id=?',id).first();
- return {id,email,staff:!!row};
+async function identity(req,env,state){
+ const session=await studioSession(req,env);
+ state.cookies.push(...session.cookies);
+ if(!session.user)fail(401,'Sign in to continue');
+ return session.user;
+}
+async function signIn(req,env){
+ const body=await readBody(req);
+ if(typeof body.email!=='string'||!body.email.trim()||body.email.length>254||typeof body.password!=='string'||!body.password||body.password.length>1024)fail(422,'Enter your Qual AI email and password');
+ if(!env.STUDIO_ORIGIN?.startsWith('https://'))fail(503,'Sign-in is not configured');
+ const upstream=await fetch(env.STUDIO_ORIGIN+'/api/auth/sign-in',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({email:body.email,password:body.password}),signal:AbortSignal.timeout(20000),redirect:'manual'});
+ if(!upstream.ok)fail(upstream.status===429?429:401,upstream.status===429?'Please wait before trying again.':'Unable to sign in. Check your Qual AI email and password.');
+ const session=await upstream.json();if(!session.authenticated||!session.user?.id)fail(401,'Unable to sign in');
+ const cookies=sessionCookies(upstream.headers);if(!cookies.length)fail(503,'Sign-in did not return a session');
+ const response=json({authenticated:true});for(const c of cookies)response.headers.append('Set-Cookie',c);return response;
 }
 async function getConversation(db,id,owner){
  const c=await stmt(db,'SELECT * FROM conversations WHERE id=? AND owner=?',id,owner).first();
@@ -80,13 +91,23 @@ async function sendMessage(req,env,user){
  return json(result);
  }catch(e){await stmt(env.DB,'DELETE FROM requests WHERE id=? AND response IS NULL',requestId).run();throw e;}
 }
-async function handler(req,env){
+async function handler(req,env,state){
  const u=new URL(req.url);let p=u.pathname;
  if(p==='/health')return json({status:'ok'});
- if(p==='/'&&req.method==='GET')return new Response(html,{headers:{...security,'Content-Type':'text/html; charset=utf-8'}});
+ if((p==='/'||p==='/sign-in')&&req.method==='GET'){
+ if(p==='/sign-in')return new Response(loginHtml,{headers:{...security,'Content-Type':'text/html; charset=utf-8'}});
+ const session=await studioSession(req,env);state.cookies.push(...session.cookies);
+ if(!session.user)return new Response(null,{status:302,headers:{...security,Location:'/sign-in'}});
+ return new Response(html,{headers:{...security,'Content-Type':'text/html; charset=utf-8'}});
+ }
  if(!p.startsWith('/api/'))return json({error:'Not found'},404);
  if(!env.DB)fail(503,'Database is not configured');
  if(!['GET','HEAD'].includes(req.method)){const origin=req.headers.get('origin');if(origin&&origin!==u.origin)fail(403,'Origin not allowed');}
+ if(p==='/api/auth/sign-in'&&req.method==='POST')return signIn(req,env);
+ if(p==='/api/auth/sign-out'&&req.method==='POST'){
+ // Close only this dashboard session; do not revoke the customer's Studio session.
+ const response=json({authenticated:false});for(const name of ['qa_access_token','qa_refresh_token'])response.headers.append('Set-Cookie',name+'=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax');return response;
+ }
  let user;
  if(p.startsWith('/api/bridge/')){
  const supplied=req.headers.get('x-studio-bridge-secret')||'';
@@ -98,12 +119,9 @@ async function handler(req,env){
  p=p.replace('/api/bridge/','/api/');
  if(!/^\/api\/(conversations(?:\/[a-f0-9-]+)?|messages|tickets(?:\/TKT-[A-Z0-9-]+)?)$/.test(p)||!['GET','POST'].includes(req.method))fail(403,'Customer operation not allowed');
  user={id:'studio:'+customer,email:'',staff:false};
- }else user=await identity(req,env);
+ }else user=await identity(req,env,state);
  if(p==='/api/me'&&req.method==='GET'){
- // Enabled only for initial owner-private publication. Persistent staff table
- // prevents a later visitor from taking ownership. Never enable on a public Site.
- if(env.BOOTSTRAP_OWNER==='true')await stmt(env.DB,'INSERT OR IGNORE INTO staff(id,label) SELECT ?,? WHERE NOT EXISTS (SELECT 1 FROM staff)',user.id,user.email||'Support owner').run();
- const me=await stmt(env.DB,'SELECT id FROM staff WHERE id=?',user.id).first();return json({...user,staff:!!me,ai_ready:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-6-luna'});
+ return json({...user,ai_ready:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-6-luna'});
  }
  if(p==='/api/conversations'&&req.method==='POST'){const id=crypto.randomUUID();await stmt(env.DB,'INSERT INTO conversations(id,owner,version,created_at) VALUES(?,?,0,?)',id,user.id,now()).run();return json({id},201);}
  if(p.startsWith('/api/conversations/')&&req.method==='GET'){
@@ -135,4 +153,9 @@ async function handler(req,env){
  }
  return json({error:'Not found'},404);
 }
-export default {async fetch(req,env){try{return await handler(req,env);}catch(e){if(!e.status)console.error(JSON.stringify({event:'request_failed',type:e.name||'Error'}));return json({error:e.status?e.message:'Request could not be completed. Please retry.'},e.status||500);}}};
+export default {async fetch(req,env){
+ const state={cookies:[]};let response;
+ try{response=await handler(req,env,state);}catch(e){if(!e.status)console.error(JSON.stringify({event:'request_failed',type:e.name||'Error'}));response=json({error:e.status?e.message:'Request could not be completed. Please retry.'},e.status||500);}
+ for(const c of state.cookies)response.headers.append('Set-Cookie',c);
+ return response;
+}};
