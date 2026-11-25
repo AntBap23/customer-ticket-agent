@@ -2,6 +2,15 @@
 
 A customer-success desk for Qualitative AI Studio. Customers use the **Get help** panel inside the Studio to ask questions or describe a problem. The assistant offers grounded guidance and creates a ticket when support needs to follow up. Support staff see a prioritized queue, the conversation, a diagnosis and the next action.
 
+## Video demos
+
+Both videos use captures from the actual live websites, with a sample support conversation and AI-generated Cedar narration. Visible email addresses are blurred. They are edited for pacing; no interface screens are recreated.
+
+- [Customer Ticket Agent — 1 minute](demo/customer-ticket-agent-live-demo.mp4)
+- [Qual AI researcher + Customer Ticket Agent — 1 minute 42 seconds](demo/qual-ai-live-websites-demo.mp4)
+
+See [video details](demo/README.md).
+
 ## Features
 
 - Customer chat with durable conversations and product-source links
